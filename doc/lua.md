@@ -42,7 +42,7 @@ If a script fails, the error is shown on the message line and the editor carries
 | `me.defcommand(name, fn)` | Define a command. `fn(n, f)` gets the numeric argument (1 by default) and whether the user gave one. Returning `false` means the command failed. The command can be run with `M-X`, `run` (`M-^E`), from `.cmd` files and command lines, and bound to keys. `me.defcommand(name, nil)` removes it. Built-in names can't be redefined. |
 | `me.bind(key, target)` | Bind a key to a command name or a Lua function. |
 | `me.unbind(key)` | Remove a binding. Returns false if the key wasn't bound. |
-| `me.binding(key)` | Name of the command a key runs, `"a Lua function"`, or nil. Old-language procedures show as `[name]`. |
+| `me.binding(key)` | Name of the command a key runs, `"a Lua function"`, or nil. Old-language procedures show as `[name]`. For a Lua function, the function itself comes back as a second value, so a new binding can call the old one: `local name, fn = me.binding(key)`. |
 | `me.runkey(key, [n])` | Run whatever a key is bound to. |
 | `me.keyname(key)` | Translate a key name to MicroEMACS form. |
 | `me.commands()` | Sorted list of all built-in and Lua command names. |
@@ -81,7 +81,7 @@ Switch buffers with `me.command("select-buffer", name)`.
 | Function | Meaning |
 |---|---|
 | `me.message(fmt, ...)` | Show a message, formatted like `string.format`. Shown even when `$discmd` is off. |
-| `me.prompt(text, [default])` | Ask for a line of text. Returns the reply, the default if the reply is empty, or nil if the user pressed `^G`. |
+| `me.prompt(text, [default])` | Ask for a line of text. Returns the reply, the default if the reply is empty, or nil if the user pressed `^G`. When a Lua command is run with replies, as in `me.command("compile", "make")`, the prompt takes the next one instead of asking. |
 | `me.yesno(text)` | Ask a yes/no question. Returns true, false, or nil for `^G`. |
 | `me.getkey()` | Wait for a key and return its name, such as `"^XF"`. |
 | `me.update()` | Redraw the screen now. |
@@ -116,6 +116,37 @@ The shell is built on these functions, which can run any program in a buffer:
 When a program finishes, `[Process finished, exit code N]` is added to its buffer. Deleting the buffer stops the program, and programs still running when the editor exits are stopped too. Output is shown as plain text: carriage returns, bells and terminal escape codes (colours, window titles) are removed.
 
 Programs in buffers are only in the Windows console version for now. Elsewhere `me.process` returns nil and a reason.
+
+## Compiling
+
+`cmd/compile.lua` compiles a C file or a make project and lists the errors and warnings, so you can go to each one. Load it from `emacs.lua`:
+
+```lua
+me.command("execute-file", "compile.lua")
+```
+
+(or once with `M-X execute-file`). Then, in a C file:
+
+1. `M-X compile` asks for the command to run, and suggests one. In a folder with a makefile it suggests `make`. For a single file it suggests `gcc -Wall -g -o name.exe name.c`, or `g++` for C++. After the first time, it suggests the last command used in that folder. Press Enter to accept the suggestion, or type another command. The current file is saved first.
+2. The command runs in the folder of the current file, and its output appears in `*compile*` in a second window while you keep working.
+3. When it finishes, the second window shows `*errors*`. That buffer lists each error, warning and note with its file, line and column, plus the number of errors and warnings at the top.
+4. Move to a line in `*errors*` and press Enter to go to that place. The file opens in the other window, and is loaded if it isn't already in a buffer. Enter also works on a message line in `*compile*`.
+5. `` ^X` `` goes to the next error or warning and `^X~` to the previous one, from any buffer. Notes are passed over (set `me.compileoptions.skipnotes = false` to include them). The message line shows the message and where you are in the list, such as `[2/5] error: 'y' undeclared`.
+
+| Command | Key | Meaning |
+|---|---|---|
+| `compile` | | Ask for a command and run it. |
+| `recompile` | | Run the last command again, without asking. |
+| `kill-compile` | | Stop the command that is running. |
+| `next-error` | `` ^X` `` | Go to the next error or warning. |
+| `previous-error` | `^X~` | Go to the previous one. |
+| `goto-error` | Enter in `*errors*` or `*compile*` | Go to the one on this line. |
+
+It reads messages from GCC, Clang (`file:line:col: error: ...`) and Microsoft C (`file(line,col): error C1234: ...`), and follows make's `Entering directory` lines, so file names from a make that recurses into other folders are found too. Linker errors with no line number (`undefined reference`) are not listed. They stay in `*compile*`.
+
+`me.compileoptions` holds the settings: `make` (default `"make"`), `cc` (default `"gcc -Wall -g"`), `cxx` (default `"g++ -Wall -g"`), `save` (save the current file first, default true) and `skipnotes`. Change them after loading the file.
+
+It needs `me.process`, so it works only in the Windows console version for now.
 
 ## Variables
 
@@ -204,3 +235,5 @@ emacs @test/luatest.lua
 The editor runs the checks and exits. The exit status is the number of failures, and the full report is in `melua-test/results.txt` in the temp folder.
 
 `test/shelltest.lua` checks programs in buffers and the shell in the same way (Windows console version only). Its report is in `meshell-test/results.txt`.
+
+`test/compiletest.lua` checks `cmd/compile.lua`. It builds a small project in the temp folder, so `make` and `gcc` must be on the PATH. Its report is in `mecompile-test/results.txt`.
