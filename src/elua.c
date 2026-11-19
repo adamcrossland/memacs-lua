@@ -473,9 +473,14 @@ static int l_binding(lua_State *L)
 	name = getfname(getbind(keycode(L, 1)));
 	if (name == NULL)
 		lua_pushnil(L);
-	else if (name[0] == HIDDEN)
+	else if (name[0] == HIDDEN) {
+		/* and the function itself, so it can be called */
 		lua_pushliteral(L, "a Lua function");
-	else
+		pushcmds(L);
+		lua_getfield(L, -1, name);
+		lua_remove(L, -2);
+		return(2);
+	} else
 		lua_pushstring(L, name);
 	return(1);
 }
@@ -716,6 +721,57 @@ static int l_builtins(lua_State *L)
 }
 
 /* me._luacommands(): list of the Lua command names */
+
+/* The i'th command written in Lua (from 0, in sorted order), or NULL
+   past the end. Asking for number 0 refreshes the list. Used for
+   command name completion. */
+
+static char **cnames = NULL;	/* the names, kept by intern() */
+static int ncnames = 0;		/* how many */
+static int cnsize = 0;		/* room in cnames */
+
+static int cmpname(const void *a, const void *b)
+{
+	return(strcmp(*(char **)a, *(char **)b));
+}
+
+char *PASCAL NEAR elua_cmdname(int i)
+{
+	lua_State *L;
+	const char *name;
+	char *s;
+	char **grown;
+	int top;
+
+	if (i == 0) {
+		ncnames = 0;
+		if ((L = thread()) == NULL)
+			return(NULL);
+		top = lua_gettop(L);
+		pushcmds(L);
+		lua_pushnil(L);
+		while (lua_next(L, -2)) {
+			lua_pop(L, 1);
+			name = lua_tostring(L, -1);
+			if (name == NULL || name[0] == HIDDEN)
+				continue;
+			if ((s = intern(name)) == NULL)
+				break;
+			if (ncnames >= cnsize) {
+				grown = (char **)realloc(cnames,
+					(cnsize + 32) * sizeof(char *));
+				if (grown == NULL)
+					break;
+				cnames = grown;
+				cnsize += 32;
+			}
+			cnames[ncnames++] = s;
+		}
+		lua_settop(L, top);
+		qsort(cnames, ncnames, sizeof(char *), cmpname);
+	}
+	return((i >= 0 && i < ncnames) ? cnames[i] : NULL);
+}
 
 static int l_luacommands(lua_State *L)
 {
@@ -1199,7 +1255,16 @@ static int l_prompt(lua_State *L)
 	strncpy(pbuf, prompt, NSTRING - 1);
 	pbuf[NSTRING - 1] = 0;
 	oldcle = clexec;
-	clexec = FALSE;
+	/* take the reply from the command's arguments if it was given
+	   some (me.command("x", "reply")), otherwise ask */
+	if (clexec) {
+		char *sp = execstr;
+
+		while (sp && (*sp == ' ' || *sp == '\t'))
+			sp++;
+		if (sp == NULL || *sp == 0)
+			clexec = FALSE;
+	}
 	reply[0] = 0;
 	status = mlreply(pbuf, reply, NSTRING);
 	clexec = oldcle;
@@ -1757,8 +1822,11 @@ static CONST char prelude[] =
 "\n"
 "-- A live shell in a buffer: the shell command\n"
 "me.shelloptions = { program = os.getenv('COMSPEC') or 'cmd.exe', buffer = '*shell*', echoes = true }\n"
-"local shellkeys, oldret, oldint = false, nil, nil\n"
-"local function fallback(name, default, n, f)\n"
+"local shellkeys, oldret, oldint = false, {}, {}\n"
+"-- run what a key did before: old is { me.binding(key) }\n"
+"local function fallback(old, default, n, f)\n"
+"  local name, fn = old[1], old[2]\n"
+"  if type(fn) == 'function' then return fn(n, f) end\n"
 "  if type(name) ~= 'string' or name == 'a Lua function' or name:find('^%[') then name = default end\n"
 "  if f then return me.command(name, n) end\n"
 "  return me.command(name)\n"
@@ -1815,7 +1883,7 @@ static CONST char prelude[] =
 "  end\n"
 "  if not shellkeys then\n"
 "    shellkeys = true\n"
-"    oldret, oldint = me.binding('^M'), me.binding('^C')\n"
+"    oldret, oldint = { me.binding('^M') }, { me.binding('^C') }\n"
 "    me.bind('^M', shellreturn)\n"
 "    me.bind('^C', shellinterrupt)\n"
 "  end\n"

@@ -492,16 +492,33 @@ clist:			/* make a completion list! */
 
 /*	comp_command:	Attempt a completion on a command name	*/
 
+/* The i'th command name: the built-in ones, then those written in Lua.
+   NULL past the end. */
+
+static char *PASCAL NEAR cmdname(i)
+
+int i;
+
+{
+	if (i <= numfunc)
+		return(names[i].n_name);
+#if	LUASCRIPT
+	return(elua_cmdname(i - numfunc - 1));
+#else
+	return(NULL);
+#endif
+}
+
 VOID PASCAL NEAR comp_command(name, cpos)
 
 char *name;	/* command containing the current name to complete */
 int *cpos;	/* ptr to position of next character to insert */
 
 {
-	register NBIND *bp;	/* trial command to complete */
+	register char *bp;	/* trial command to complete */
 	register int index;	/* index into strings to compare */
-	register int curbind;	/* index into the names[] array */
-	register NBIND *match;	/* last command that matches string */
+	register int curbind;	/* index into the command names */
+	register char *match;	/* last command that matches string */
 	register int matchflag;	/* did this command name match? */
 	register int comflag;	/* was there a completion at all? */
 
@@ -517,13 +534,12 @@ int *cpos;	/* ptr to position of next character to insert */
 		/* first, we start at the first command and scan the list */
 		match = NULL;
 		curbind = 0;
-		while (curbind <= numfunc) {
+		while ((bp = cmdname(curbind)) != NULL) {
 
 			/* is this a match? */
-			bp = &names[curbind];
 			matchflag = TRUE;
 			for (index = 0; index < *cpos; index++)
-				if (name[index] != bp->n_name[index]) {
+				if (name[index] != bp[index]) {
 					matchflag = FALSE;
 					break;
 				}
@@ -534,10 +550,10 @@ int *cpos;	/* ptr to position of next character to insert */
 				/* if this is the first match, simply record it */
 				if (match == NULL) {
 					match = bp;
-					name[*cpos] = bp->n_name[*cpos];
+					name[*cpos] = bp[*cpos];
 				} else {
 					/* if there's a difference, stop here */
-					if (name[*cpos] != bp->n_name[*cpos])
+					if (name[*cpos] != bp[*cpos])
 						return;
 				}
 			}
@@ -579,8 +595,8 @@ char *name;	/* command containing the current name to complete */
 int *cpos;	/* ptr to position of next character to insert */
 
 {
-	register NBIND *bp;	/* trial command to complete */
-	register int curbind;	/* index into the names[] array */
+	register char *bp;	/* trial command to complete */
+	register int curbind;	/* index into the command names */
 	register int name_len;	/* current length of input string */
 	register BUFFER *listbuf;/* buffer to put completion list into */
 
@@ -595,12 +611,11 @@ int *cpos;	/* ptr to position of next character to insert */
 	name_len = *cpos;
 
 	/* first, we start at the first command and scan the list */
-	for (curbind = 0; curbind <= numfunc; curbind++) {
+	for (curbind = 0; (bp = cmdname(curbind)) != NULL; curbind++) {
 
 		/* is this a match? */
-		bp = &names[curbind];
-		if (strncmp(name, bp->n_name, name_len) == 0)
-			addline(listbuf, bp->n_name);
+		if (*bp && strncmp(name, bp, name_len) == 0)
+			addline(listbuf, bp);
 	}
 
 	wpopup(listbuf);

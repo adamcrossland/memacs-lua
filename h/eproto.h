@@ -170,6 +170,7 @@ extern int PASCAL NEAR elua_evalcmd(int f, int n);
 extern int PASCAL NEAR elua_buildlist(BUFFER *listbuf, int type, char *mstring);
 extern char *PASCAL NEAR elua_startname(VOID);
 extern char *PASCAL NEAR elua_intern(char *name);
+extern char *PASCAL NEAR elua_cmdname(int i);
 #endif
 #if	PROCESS
 extern VOID PASCAL NEAR elua_procexit(int id, long code);
@@ -748,6 +749,7 @@ extern int PASCAL NEAR elua_evalcmd();
 extern int PASCAL NEAR elua_buildlist();
 extern char *PASCAL NEAR elua_startname();
 extern char *PASCAL NEAR elua_intern();
+extern char *PASCAL NEAR elua_cmdname();
 #endif
 #if	PROCESS
 extern VOID PASCAL NEAR elua_procexit();

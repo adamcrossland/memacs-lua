@@ -15,6 +15,10 @@ This version embeds Lua 5.4 as its main scripting language, alongside the origin
 
 On Windows, `M-X shell` runs a command prompt in the `*shell*` buffer. Commands run while you keep editing, and their output appears as it arrives. Lua scripts can run other programs in buffers the same way with `me.process`. See [doc/lua.md](doc/lua.md#programs-in-buffers).
 
+## Compiling
+
+[cmd/compile.lua](cmd/compile.lua) runs `make` or `gcc` from the editor and lists the errors and warnings in an `*errors*` buffer. Press Enter on one, or `` ^X` ``, to go to that line. Files that aren't loaded yet are opened. See [doc/lua.md](doc/lua.md#compiling).
+
 ## File encryption
 
 CRYPT mode now encrypts files with XChaCha20-Poly1305 and Argon2id, from the [Monocypher](src/monocypher) library, in place of the original 1986 cipher. A wrong key or a changed file is detected instead of loading garbage. Encrypted files are recognized when you open them, so CRYPT mode turns on by itself and the editor asks for the key. Files encrypted by older versions are still read, and are saved in the new format. The 16-bit MS-DOS and Windows 3.x builds keep the old cipher. Run `emacs @test/cryptotest.lua` to check it.
